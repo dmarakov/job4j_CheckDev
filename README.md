@@ -203,4 +203,6 @@ Smoke-тесты:
 - Mock сервис - http://localhost:9912/swagger-ui/index.html
 - Notification сервис - http://localhost:9920/swagger-ui/index.html
 
+Git flow [#505059]
+
 ___
