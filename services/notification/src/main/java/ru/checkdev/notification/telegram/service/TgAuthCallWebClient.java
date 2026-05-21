@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 import ru.checkdev.notification.domain.Profile;
+import ru.checkdev.notification.util.Retry;
 
 /**
  * Класс реализует методы get и post для отправки сообщений через WebClient
@@ -24,6 +25,8 @@ public class TgAuthCallWebClient implements TgCall {
     @Value("${server.auth}")
     private String urlServiceAuth;
 
+    private final Retry retry = new Retry(3, 1000);
+
     /**
      * Метод get
      *
@@ -32,12 +35,18 @@ public class TgAuthCallWebClient implements TgCall {
      */
     @Override
     public Mono<Profile> doGet(String url) {
-        return WebClient.create(urlServiceAuth)
-                .get()
-                .uri(url)
-                .retrieve()
-                .bodyToMono(Profile.class)
-                .doOnError(err -> log.error("API not found: {}", err.getMessage()));
+        return Mono.fromCallable(() ->
+            retry.exec(
+                () -> WebClient.create(urlServiceAuth)
+                    .get()
+                    .uri(url)
+                    .retrieve()
+                    .bodyToMono(Profile.class)
+                    .doOnError(err -> log.error("API not found: {}", err.getMessage()))
+                    .block(),
+                null
+            )
+        ).doOnError(err -> log.error("doGet failed after retries: {}", err.getMessage()));
     }
 
     /**
@@ -49,22 +58,34 @@ public class TgAuthCallWebClient implements TgCall {
      */
     @Override
     public Mono<Object> doPost(String url, Profile profile) {
-        return WebClient.create(urlServiceAuth)
-                .post()
-                .uri(url)
-                .bodyValue(profile)
-                .retrieve()
-                .bodyToMono(Object.class)
-                .doOnError(err -> log.error("API not found: {}", err.getMessage()));
+        return Mono.fromCallable(() ->
+            retry.exec(
+                () -> WebClient.create(urlServiceAuth)
+                    .post()
+                    .uri(url)
+                    .bodyValue(profile)
+                    .retrieve()
+                    .bodyToMono(Object.class)
+                    .doOnError(err -> log.error("API not found: {}", err.getMessage()))
+                    .block(),
+                null
+            )
+        ).doOnError(err -> log.error("doPost failed after retries: {}", err.getMessage()));
     }
 
     @Override
     public Mono<Object> doPost(String url) {
-        return WebClient.create(urlServiceAuth)
-                .post()
-                .uri(url)
-                .retrieve()
-                .bodyToMono(Object.class)
-                .doOnError(err -> log.error("API not found: {}", err.getMessage()));
+        return Mono.fromCallable(() ->
+            retry.exec(
+                () -> WebClient.create(urlServiceAuth)
+                    .post()
+                    .uri(url)
+                    .retrieve()
+                    .bodyToMono(Object.class)
+                    .doOnError(err -> log.error("API not found: {}", err.getMessage()))
+                    .block(),
+                null
+            )
+        ).doOnError(err -> log.error("doPost failed after retries: {}", err.getMessage()));
     }
 }
