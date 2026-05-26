@@ -7,7 +7,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 import ru.checkdev.notification.domain.Profile;
+import ru.checkdev.notification.util.CircuitBreaker;
 import ru.checkdev.notification.util.Retry;
 
 /**
@@ -26,6 +28,7 @@ public class TgAuthCallWebClient implements TgCall {
     private String urlServiceAuth;
 
     private final Retry retry = new Retry(3, 1000);
+    private final CircuitBreaker circuitBreaker = new CircuitBreaker(2);
 
     /**
      * Метод get
@@ -35,18 +38,20 @@ public class TgAuthCallWebClient implements TgCall {
      */
     @Override
     public Mono<Profile> doGet(String url) {
-        return Mono.fromCallable(() ->
-            retry.exec(
-                () -> WebClient.create(urlServiceAuth)
-                    .get()
-                    .uri(url)
-                    .retrieve()
-                    .bodyToMono(Profile.class)
-                    .doOnError(err -> log.error("API not found: {}", err.getMessage()))
-                    .block(),
-                null
+        return Mono.fromCallable(
+                () -> retry.exec(
+                    () -> circuitBreaker.exec(
+                        () -> WebClient.create(urlServiceAuth)
+                            .get()
+                            .uri(url)
+                            .retrieve()
+                            .bodyToMono(Profile.class)
+                            .block(),
+                        null),
+                    null)
             )
-        ).doOnError(err -> log.error("doGet failed after retries: {}", err.getMessage()));
+            .subscribeOn(Schedulers.boundedElastic())
+            .doOnError(err -> log.error("doGet failed: {}", err.getMessage()));
     }
 
     /**
@@ -58,34 +63,42 @@ public class TgAuthCallWebClient implements TgCall {
      */
     @Override
     public Mono<Object> doPost(String url, Profile profile) {
-        return Mono.fromCallable(() ->
-            retry.exec(
-                () -> WebClient.create(urlServiceAuth)
-                    .post()
-                    .uri(url)
-                    .bodyValue(profile)
-                    .retrieve()
-                    .bodyToMono(Object.class)
-                    .doOnError(err -> log.error("API not found: {}", err.getMessage()))
-                    .block(),
-                null
+        return Mono.fromCallable(
+                () -> retry.exec(
+                    () -> circuitBreaker.exec(
+                        () -> WebClient.create(urlServiceAuth)
+                            .post()
+                            .uri(url)
+                            .bodyValue(profile)
+                            .retrieve()
+                            .bodyToMono(Object.class)
+                            .doOnError(err -> log.error("API not found: {}", err.getMessage()))
+                            .block(),
+                        null),
+                    null)
+
             )
-        ).doOnError(err -> log.error("doPost failed after retries: {}", err.getMessage()));
+            .subscribeOn(Schedulers.boundedElastic())
+            .doOnError(err -> log.error("doPost failed after retries: {}", err.getMessage()));
     }
 
     @Override
     public Mono<Object> doPost(String url) {
-        return Mono.fromCallable(() ->
-            retry.exec(
-                () -> WebClient.create(urlServiceAuth)
-                    .post()
-                    .uri(url)
-                    .retrieve()
-                    .bodyToMono(Object.class)
-                    .doOnError(err -> log.error("API not found: {}", err.getMessage()))
-                    .block(),
-                null
+        return Mono.fromCallable(
+                () -> retry.exec(
+                    () -> circuitBreaker.exec(
+                        () -> WebClient.create(urlServiceAuth)
+                            .post()
+                            .uri(url)
+                            .retrieve()
+                            .bodyToMono(Object.class)
+                            .doOnError(err -> log.error("API not found: {}", err.getMessage()))
+                            .block(),
+                        null
+                    ), null
+                )
             )
-        ).doOnError(err -> log.error("doPost failed after retries: {}", err.getMessage()));
+            .subscribeOn(Schedulers.boundedElastic())
+            .doOnError(err -> log.error("doPost failed after retries: {}", err.getMessage()));
     }
 }
